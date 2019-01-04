@@ -3,6 +3,8 @@ package context
 import (
 	"strings"
 
+	"github.com/tendermint/tendermint/crypto/multisig"
+
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/keys"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -232,8 +234,72 @@ func MakeSignature(name, passphrase string, msg StdSignMsg) (sig auth.StdSignatu
 	if err != nil {
 		return
 	}
+	/* auth.StdSignature does not seem to suit the design of multisig signed txs [alessio]
+	 so a solution may potentially be to marshal the multisig bytes with amino (see
+		github.com/tendermint/tendermint/crypto/multisig/multisignature.go):
+	 auth.StdSignature{
+		PubKey: pubkey, 				// the whole multisig key
+		Signature: multisig.Marshal(),
+	 }
+
+	 Eventually, when unpacking the sig to add another key, one could call codec.MustUnmarshalBinaryBare()
+	*/
 	return auth.StdSignature{
 		PubKey:    pubkey,
 		Signature: sigBytes,
 	}, nil
+}
+
+func (bldr TxBuilder) MultisigSignStdTx(multisigKey multisig.PubKeyMultisigThreshold,
+	subkeyName, passphrase string, stdTx auth.StdTx) (signedStdTx auth.StdTx, err error) {
+
+	stdSignature, err := MakeSignature(subkeyName, passphrase, StdSignMsg{
+		ChainID:       bldr.chainID,
+		AccountNumber: bldr.accountNumber,
+		Sequence:      bldr.sequence,
+		Fee:           stdTx.Fee,
+		Msgs:          stdTx.GetMsgs(),
+		Memo:          stdTx.GetMemo(),
+	})
+	if err != nil {
+		return
+	}
+	multisigSig, err := ConcatMultisigSignature(stdTx, multisigKey, stdSignature)
+	if err != nil {
+		return
+	}
+
+	signedStdTx = auth.NewStdTx(stdTx.GetMsgs(), stdTx.Fee, []auth.StdSignature{multisigSig}, stdTx.GetMemo())
+	return
+}
+
+func ConcatMultisigSignature(stdTx auth.StdTx, multisigKey multisig.PubKeyMultisigThreshold,
+	sig auth.StdSignature) (auth.StdSignature, error) {
+
+	var newMultiSig *multisig.Multisignature
+	sigs := stdTx.GetSignatures()
+	if len(sigs) == 0 {
+		newMultiSig = multisig.NewMultisig(len(multisigKey.PubKeys))
+		if err := newMultiSig.AddSignatureFromPubKey(sig.Signature, sig.PubKey, multisigKey.PubKeys); err != nil {
+			return auth.StdSignature{}, err
+		}
+	}
+
+	// keybase, err := keys.GetKeyBase()
+	// if err != nil {
+	// 	return
+	// }
+	// sigBytes, pubkey, err := keybase.Sign(name, passphrase, msg.Bytes())
+	// if err != nil {
+	// 	return
+	// }
+	// keybase, err := keys.GetKeyBase()
+	// if err != nil {
+	// 	return
+	// }
+	// sigBytes, pubkey, err := keybase.Sign(name, passphrase, msg.Bytes())
+	// if err != nil {
+	// 	return
+	// }
+	return auth.StdSignature{}, nil
 }

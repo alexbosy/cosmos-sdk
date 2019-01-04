@@ -6,6 +6,9 @@ import (
 	"io"
 	"os"
 
+	"github.com/tendermint/tendermint/crypto"
+	"github.com/tendermint/tendermint/crypto/multisig"
+
 	"github.com/cosmos/cosmos-sdk/codec"
 
 	"github.com/tendermint/go-amino"
@@ -13,6 +16,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/client/context"
 	"github.com/cosmos/cosmos-sdk/client/keys"
+	ckeys "github.com/cosmos/cosmos-sdk/crypto/keys"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	authtxb "github.com/cosmos/cosmos-sdk/x/auth/client/txbuilder"
@@ -109,6 +113,90 @@ func PrintUnsignedStdTx(w io.Writer, txBldr authtxb.TxBuilder, cliCtx context.CL
 	return
 }
 
+func retrieveMultisigKeyFromKeybase(kb ckeys.Keybase, name string) (*multisig.PubKeyMultisigThreshold, error) {
+	info, err := kb.Get(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if info.GetType() != ckeys.TypeOffline {
+		return nil, fmt.Errorf(
+			"%q must be an offline key: %s", name, info.GetType())
+	}
+
+	multisigPub, ok := info.GetPubKey().(*multisig.PubKeyMultisigThreshold)
+	if !ok {
+		return nil, fmt.Errorf("%q must be a multisig public key", name)
+	}
+
+	return multisigPub, nil
+}
+
+func multisigKeyContainsPubKey(multisigKey *multisig.PubKeyMultisigThreshold, pubkey crypto.PubKey) bool {
+	for _, subkey := range multisigKey.PubKeys {
+		if subkey.Equals(pubkey) {
+			return true
+		}
+	}
+	return false
+}
+
+func MultisigSignStdTx(txBldr authtxb.TxBuilder, cliCtx context.CLIContext,
+	multisigPubName string, name string, stdTx auth.StdTx,
+	offline bool) (signedStdTx auth.StdTx, err error) {
+
+	keybase, err := keys.GetKeyBase()
+	if err != nil {
+		return signedStdTx, err
+	}
+
+	// retrieve keys from keybase
+	multisigKey, err := retrieveMultisigKeyFromKeybase(keybase, multisigPubName)
+	if err != nil {
+		return signedStdTx, err
+	}
+
+	info, err := keybase.Get(name)
+	if err != nil {
+		return signedStdTx, err
+	}
+
+	pub := info.GetPubKey()
+	if !multisigKeyContainsPubKey(multisigKey, info.GetPubKey()) {
+		return signedStdTx, fmt.Errorf(
+			"%q does not contain %s", multisigPubName, pub.Address().String())
+	}
+
+	// check whether the address is a signer
+	if err := assertTxSigner(sdk.AccAddress(multisigKey.Address()), stdTx.GetSigners()); err != nil {
+		return signedStdTx, err
+	}
+
+	addr := multisigKey.Address()
+
+	if !offline && txBldr.GetAccountNumber() == 0 {
+		accNum, err := cliCtx.GetAccountNumber(addr)
+		if err != nil {
+			return signedStdTx, err
+		}
+		txBldr = txBldr.WithAccountNumber(accNum)
+	}
+
+	if !offline && txBldr.GetSequence() == 0 {
+		accSeq, err := cliCtx.GetAccountSequence(addr)
+		if err != nil {
+			return signedStdTx, err
+		}
+		txBldr = txBldr.WithSequence(accSeq)
+	}
+
+	passphrase, err := keys.GetPassphrase(name)
+	if err != nil {
+		return signedStdTx, err
+	}
+	return txBldr.MultisigSignStdTx(name, passphrase, stdTx)
+}
+
 // SignStdTx appends a signature to a StdTx and returns a copy of a it. If appendSig
 // is false, it replaces the signatures already attached with the new signature.
 // Don't perform online validation or lookups if offline is true.
@@ -128,9 +216,8 @@ func SignStdTx(txBldr authtxb.TxBuilder, cliCtx context.CLIContext, name string,
 	addr := info.GetPubKey().Address()
 
 	// check whether the address is a signer
-	if !isTxSigner(sdk.AccAddress(addr), stdTx.GetSigners()) {
-		return signedStdTx, fmt.Errorf(
-			"The generated transaction's intended signer does not match the given signer: %q", name)
+	if err := assertTxSigner(sdk.AccAddress(addr), stdTx.GetSigners()); err != nil {
+		return signedStdTx, err
 	}
 
 	if !offline && txBldr.GetAccountNumber() == 0 {
@@ -253,11 +340,12 @@ func buildUnsignedStdTxOffline(txBldr authtxb.TxBuilder, cliCtx context.CLIConte
 	return auth.NewStdTx(stdSignMsg.Msgs, stdSignMsg.Fee, nil, stdSignMsg.Memo), nil
 }
 
-func isTxSigner(user sdk.AccAddress, signers []sdk.AccAddress) bool {
+func assertTxSigner(user sdk.AccAddress, signers []sdk.AccAddress) error {
 	for _, s := range signers {
 		if bytes.Equal(user.Bytes(), s.Bytes()) {
-			return true
+			return nil
 		}
 	}
-	return false
+	return fmt.Errorf("The generated transaction's intended signer does not match the given signer: %s",
+		user.String())
 }
