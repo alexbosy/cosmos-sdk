@@ -24,7 +24,6 @@ const (
 	flagOffline      = "offline"
 	flagSigOnly      = "signature-only"
 	flagOutfile      = "output-document"
-	flagMultisig     = "multisig"
 )
 
 // GetSignCommand returns the sign command
@@ -54,7 +53,6 @@ recommended to set such parameters manually.`,
 	cmd.Flags().Bool(flagAppend, true,
 		"Append the signature to the existing ones. If disabled, old signatures would be overwritten")
 	cmd.Flags().Bool(flagSigOnly, false, "Print only the generated signature, then exit.")
-	cmd.Flags().Bool(flagMultisig, false, "Sign and add signature to a multisig signature.")
 	cmd.Flags().Bool(flagValidateSigs, false, "Print the addresses that must sign the transaction, "+
 		"those who have already signed it, and make sure that signatures are in the correct order.")
 	cmd.Flags().Bool(flagOffline, false, "Offline mode. Do not query a full node.")
@@ -70,13 +68,6 @@ func makeSignCmd(cdc *amino.Codec) func(cmd *cobra.Command, args []string) error
 		stdTx, err := readAndUnmarshalStdTx(cdc, args[0])
 		if err != nil {
 			return
-		}
-
-		if viper.GetBool(flagMultisig) && len(stdTx.GetMsgs()) != 1 {
-			return fmt.Errorf(
-				"the supplied transaction contains %d messages, multisig mode supports single-message transactions only",
-				len(stdTx.GetMsgs()),
-			)
 		}
 
 		offline := viper.GetBool(flagOffline)
