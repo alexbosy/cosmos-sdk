@@ -150,9 +150,9 @@ func SignStdTx(txBldr authtxb.TxBuilder, cliCtx context.CLIContext, name string,
 	return txBldr.SignStdTx(name, passphrase, stdTx, appendSig)
 }
 
-// SignStdTxWithMultisigKey attaches a multisig signature to a StdTx
-// and returns a copy of a it.
-// Don't perform online validation or lookups if offline is true.
+// SignStdTxWithMultisigKey appends a signature to a StdTx and returns a copy of a it.
+// Don't perform online validation or lookups if offline is true, else
+// populate account and sequence numbers from a multisig account.
 func SignStdTxWithMultisigKey(txBldr authtxb.TxBuilder, cliCtx context.CLIContext,
 	multisigKeyName, name string, stdTx auth.StdTx, offline bool) (
 	auth.StdTx, error) {
