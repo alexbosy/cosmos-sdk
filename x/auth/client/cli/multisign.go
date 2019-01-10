@@ -38,8 +38,8 @@ recommended to set such parameters manually.`,
 		Args: cobra.MinimumNArgs(3),
 	}
 	cmd.Flags().String(client.FlagName, "", "Name of multisig (offline) public key")
-	cmd.Flags().Bool(flagSigOnly, false, "Print only the generated signature, then exit.")
-	cmd.Flags().Bool(flagOffline, false, "Offline mode. Do not query a full node.")
+	cmd.Flags().Bool(flagSigOnly, false, "Print only the generated signature, then exit")
+	cmd.Flags().Bool(flagOffline, false, "Offline mode. Do not query a full node")
 	cmd.Flags().String(flagOutfile, "",
 		"The document will be written to the given file instead of STDOUT")
 
