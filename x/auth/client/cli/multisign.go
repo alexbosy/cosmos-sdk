@@ -68,7 +68,7 @@ func makeMultiSignCmd(cdc *amino.Codec) func(cmd *cobra.Command, args []string) 
 				args[1], multisigInfo.GetType())
 		}
 
-		multisigPub := multisigInfo.GetPubKey().(*multisig.PubKeyMultisigThreshold)
+		multisigPub := multisigInfo.GetPubKey().(multisig.PubKeyMultisigThreshold)
 		multisigSig := multisig.NewMultisig(len(args) - 2)
 		for i := 2; i < len(args); i++ {
 			stdSig, err := readAndUnmarshalStdSignature(cdc, args[i])
@@ -79,7 +79,7 @@ func makeMultiSignCmd(cdc *amino.Codec) func(cmd *cobra.Command, args []string) 
 		}
 
 		cliCtx := context.NewCLIContext().WithCodec(cdc).WithAccountDecoder(cdc)
-		newStdSig := auth.StdSignature{Signature: multisigSig.Marshal(), PubKey: multisigPub}
+		newStdSig := auth.StdSignature{Signature: cdc.MustMarshalBinaryLengthPrefixed(multisigSig), PubKey: multisigPub}
 		newTx := auth.NewStdTx(stdTx.GetMsgs(), stdTx.Fee, []auth.StdSignature{newStdSig}, stdTx.GetMemo())
 
 		var json []byte
