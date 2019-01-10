@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/tendermint/tendermint/crypto"
+	"github.com/tendermint/tendermint/crypto/multisig"
 	"github.com/tendermint/tendermint/crypto/secp256k1"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -232,6 +233,11 @@ func consumeSignatureVerificationGas(meter sdk.GasMeter, pubkey crypto.PubKey, p
 		meter.ConsumeGas(params.SigVerifyCostED25519, "ante verify: ed25519")
 	case strings.Contains(pubkeyType, "secp256k1"):
 		meter.ConsumeGas(params.SigVerifyCostSecp256k1, "ante verify: secp256k1")
+	case strings.Contains(pubkeyType, "multisigthreshold"):
+		multisigPubKey := pubkey.(multisig.PubKeyMultisigThreshold)
+		for _, pk := range multisigPubKey.PubKeys {
+			consumeSignatureVerificationGas(meter, pk, params)
+		}
 	default:
 		panic(fmt.Sprintf("unrecognized signature type: %s", pubkeyType))
 	}
