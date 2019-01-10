@@ -9,10 +9,12 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 
 	"github.com/tendermint/go-amino"
+	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/common"
 
 	"github.com/cosmos/cosmos-sdk/client/context"
 	"github.com/cosmos/cosmos-sdk/client/keys"
+	crkeys "github.com/cosmos/cosmos-sdk/crypto/keys"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	authtxb "github.com/cosmos/cosmos-sdk/x/auth/client/txbuilder"
@@ -133,20 +135,11 @@ func SignStdTx(txBldr authtxb.TxBuilder, cliCtx context.CLIContext, name string,
 			"The generated transaction's intended signer does not match the given signer: %q", name)
 	}
 
-	if !offline && txBldr.GetAccountNumber() == 0 {
-		accNum, err := cliCtx.GetAccountNumber(addr)
+	if !offline {
+		txBldr, err = populateAccountNumberSequenceFromState(txBldr, cliCtx, addr)
 		if err != nil {
 			return signedStdTx, err
 		}
-		txBldr = txBldr.WithAccountNumber(accNum)
-	}
-
-	if !offline && txBldr.GetSequence() == 0 {
-		accSeq, err := cliCtx.GetAccountSequence(addr)
-		if err != nil {
-			return signedStdTx, err
-		}
-		txBldr = txBldr.WithSequence(accSeq)
 	}
 
 	passphrase, err := keys.GetPassphrase(name)
@@ -155,6 +148,74 @@ func SignStdTx(txBldr authtxb.TxBuilder, cliCtx context.CLIContext, name string,
 	}
 
 	return txBldr.SignStdTx(name, passphrase, stdTx, appendSig)
+}
+
+// SignStdTxWithMultisigKey attaches a multisig signature to a StdTx
+// and returns a copy of a it.
+// Don't perform online validation or lookups if offline is true.
+func SignStdTxWithMultisigKey(txBldr authtxb.TxBuilder, cliCtx context.CLIContext,
+	multisigKeyName, name string, stdTx auth.StdTx, offline bool) (
+	auth.StdTx, error) {
+
+	var signedStdTx auth.StdTx
+
+	keybase, err := keys.GetKeyBase()
+	if err != nil {
+		return signedStdTx, err
+	}
+
+	info, err := keybase.Get(multisigKeyName)
+	if err != nil {
+		return signedStdTx, err
+	}
+
+	if info.GetType() != crkeys.TypeOffline {
+		return signedStdTx, fmt.Errorf("%q must be of type offline: %q",
+			multisigKeyName, info.GetType())
+	}
+
+	addr := info.GetPubKey().Address()
+
+	// check whether the multisig address is a signer
+	if !isTxSigner(sdk.AccAddress(addr), stdTx.GetSigners()) {
+		return signedStdTx, fmt.Errorf(
+			"The generated transaction's intended signer does not match the given signer: %q", name)
+	}
+
+	if !offline {
+		txBldr, err = populateAccountNumberSequenceFromState(txBldr, cliCtx, addr)
+		if err != nil {
+			return signedStdTx, err
+		}
+	}
+
+	passphrase, err := keys.GetPassphrase(name)
+	if err != nil {
+		return signedStdTx, err
+	}
+
+	return txBldr.SignStdTx(name, passphrase, stdTx, false)
+}
+
+func populateAccountNumberSequenceFromState(txBldr authtxb.TxBuilder, cliCtx context.CLIContext,
+	addr crypto.Address) (authtxb.TxBuilder, error) {
+	if txBldr.GetAccountNumber() == 0 {
+		accNum, err := cliCtx.GetAccountNumber(addr)
+		if err != nil {
+			return txBldr, err
+		}
+		txBldr = txBldr.WithAccountNumber(accNum)
+	}
+
+	if txBldr.GetSequence() == 0 {
+		accSeq, err := cliCtx.GetAccountSequence(addr)
+		if err != nil {
+			return txBldr, err
+		}
+		txBldr = txBldr.WithSequence(accSeq)
+	}
+
+	return txBldr, nil
 }
 
 // GetTxEncoder return tx encoder from global sdk configuration if ones is defined.
