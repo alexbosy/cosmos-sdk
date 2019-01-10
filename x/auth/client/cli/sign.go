@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	flagMultisig     = "multisig"
 	flagAppend       = "append"
 	flagValidateSigs = "validate-signatures"
 	flagOffline      = "offline"
@@ -45,13 +46,22 @@ performed as that will require communication with a full node.
 
 The --offline flag makes sure that the client will not reach out to an external node.
 Thus account number or sequence number lookups will not be performed and it is
-recommended to set such parameters manually.`,
+recommended to set such parameters manually.
+
+The --multisig=<multisigkey> flag generates a signature on behalf of a multisig account
+key. It implies --signature-only. Full multisig signed transactions may eventually
+be generated via the 'multisign' command.
+`,
 		RunE: makeSignCmd(codec),
 		Args: cobra.ExactArgs(1),
 	}
 	cmd.Flags().String(client.FlagName, "", "Name of private key with which to sign")
+	cmd.Flags().String(flagMultisig, "",
+		"Name of the multisig account's public key on behalf of which the "+
+			"transaction shall be signed")
 	cmd.Flags().Bool(flagAppend, true,
-		"Append the signature to the existing ones. If disabled, old signatures would be overwritten")
+		"Append the signature to the existing ones. "+
+			"If disabled, old signatures would be overwritten. Ignored if --multisig is on")
 	cmd.Flags().Bool(flagSigOnly, false, "Print only the generated signature, then exit.")
 	cmd.Flags().Bool(flagValidateSigs, false, "Print the addresses that must sign the transaction, "+
 		"those who have already signed it, and make sure that signatures are in the correct order.")
@@ -88,9 +98,19 @@ func makeSignCmd(cdc *amino.Codec) func(cmd *cobra.Command, args []string) error
 		}
 
 		// if --signature-only is on, then override --append
+		var newTx auth.StdTx
 		generateSignatureOnly := viper.GetBool(flagSigOnly)
-		appendSig := viper.GetBool(flagAppend) && !generateSignatureOnly
-		newTx, err := utils.SignStdTx(txBldr, cliCtx, name, stdTx, appendSig, offline)
+		multisigPubKeyName := viper.GetString(flagMultisig)
+
+		if multisigPubKeyName != "" {
+			newTx, err = utils.SignStdTxWithMultisigKey(
+				txBldr, cliCtx, multisigPubKeyName, name, stdTx, offline)
+			generateSignatureOnly = true
+		} else {
+			appendSig := viper.GetBool(flagAppend) && !generateSignatureOnly
+			newTx, err = utils.SignStdTx(
+				txBldr, cliCtx, name, stdTx, appendSig, offline)
+		}
 		if err != nil {
 			return err
 		}

@@ -28,6 +28,9 @@ func GetMultiSignCommand(codec *amino.Codec) *cobra.Command {
 Read signature(s) from <signature> file(s), generate a multisig signature compliant to the
 offline multisig key <name>, and attach it to the transaction read from <file>.
 
+If the flag --signature-only flag is on, it outputs a JSON representation
+of the generated signature only.
+
 The --offline flag makes sure that the client will not reach out to an external node.
 Thus account number or sequence number lookups will not be performed and it is
 recommended to set such parameters manually.`,
