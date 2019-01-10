@@ -7,11 +7,14 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/tendermint/tendermint/crypto/multisig"
+
 	"github.com/cosmos/go-bip39"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/cli"
 
 	"github.com/cosmos/cosmos-sdk/client"
@@ -30,6 +33,7 @@ const (
 	flagDryRun      = "dry-run"
 	flagAccount     = "account"
 	flagIndex       = "index"
+	flagMultisig    = "multisig"
 )
 
 func addKeyCommand() *cobra.Command {
@@ -49,7 +53,9 @@ Use the --pubkey flag to add arbitrary public keys to the keystore for construct
 		Args: cobra.ExactArgs(1),
 		RunE: runAddCmd,
 	}
-	cmd.Flags().String(FlagPublicKey, "", "Store only a public key (useful for constructing multisigs e.g. cosmospub1...)")
+	cmd.Flags().StringSlice(flagMultisig, nil, "Construct and store a multisig public key key. It implies --pubkey")
+	cmd.Flags().Uint(flagMultiSigThreshold, 1, "K out of N required signatures. For use in conjunction with --multisig")
+	cmd.Flags().String(FlagPublicKey, "", "Store only a public key")
 	cmd.Flags().BoolP(flagInteractive, "i", false, "Interactively prompt user for BIP39 passphrase and mnemonic")
 	cmd.Flags().Bool(client.FlagUseLedger, false, "Store a local reference to a private key on a Ledger device")
 	cmd.Flags().String(flagBIP44Path, "44'/118'/0'/0/0", "BIP44 path from which to derive a private key")
@@ -98,6 +104,28 @@ func runAddCmd(cmd *cobra.Command, args []string) error {
 				fmt.Sprintf("override the existing name %s", name), buf); err != nil || !response {
 				return err
 			}
+		}
+
+		multisigKeys := viper.GetStringSlice(flagMultisig)
+		if len(multisigKeys) != 0 {
+			var pks []crypto.PubKey
+
+			multisigThreshold := viper.GetInt(flagMultiSigThreshold)
+			if err := validateMultisigThreshold(multisigThreshold, len(multisigKeys)); err != nil {
+				return err
+			}
+
+			for _, keyname := range multisigKeys {
+				k, err := kb.Get(keyname)
+				if err != nil {
+					return err
+				}
+				pks = append(pks, k.GetPubKey())
+			}
+
+			pk := multisig.NewPubKeyMultisigThreshold(multisigThreshold, pks)
+			_, err := kb.CreateOffline(name, pk)
+			return err
 		}
 
 		// ask for a password when generating a local key
