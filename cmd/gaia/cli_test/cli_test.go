@@ -746,6 +746,10 @@ func initializeFixtures(t *testing.T) (chainID, servAddr, port, gaiadHome, gaiac
 	executeWrite(t, fmt.Sprintf("gaiacli keys delete --home=%s bar", gaiacliHome), app.DefaultKeyPass)
 	executeWriteCheckErr(t, fmt.Sprintf("gaiacli keys add --home=%s foo", gaiacliHome), app.DefaultKeyPass)
 	executeWriteCheckErr(t, fmt.Sprintf("gaiacli keys add --home=%s bar", gaiacliHome), app.DefaultKeyPass)
+	executeWriteCheckErr(t, fmt.Sprintf("gaiacli keys add --home=%s baz", gaiacliHome), app.DefaultKeyPass)
+	executeWriteCheckErr(t, fmt.Sprintf(
+		"gaiacli keys add --home=%s --multisig=foo,bar,baz --multisig-threshold=2 foobarbaz", gaiacliHome),
+		app.DefaultKeyPass)
 	executeWriteCheckErr(t, fmt.Sprintf("gaiacli config --home=%s output json", gaiacliHome))
 	fooAddr, _ := executeGetAddrPK(t, fmt.Sprintf("gaiacli keys show foo --home=%s", gaiacliHome))
 	chainID = executeInit(t, fmt.Sprintf("gaiad init -o --moniker=foo --home=%s", gaiadHome))
