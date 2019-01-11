@@ -79,7 +79,8 @@ func makeMultiSignCmd(cdc *amino.Codec) func(cmd *cobra.Command, args []string) 
 		}
 
 		cliCtx := context.NewCLIContext().WithCodec(cdc).WithAccountDecoder(cdc)
-		newStdSig := auth.StdSignature{Signature: cdc.MustMarshalBinaryLengthPrefixed(multisigSig), PubKey: multisigPub}
+		//newStdSig := auth.StdSignature{Signature: cdc.MustMarshalBinaryLengthPrefixed(multisigSig), PubKey: multisigPub}
+		newStdSig := auth.StdSignature{Signature: cdc.MustMarshalBinaryBare(multisigSig), PubKey: multisigPub}
 		newTx := auth.NewStdTx(stdTx.GetMsgs(), stdTx.Fee, []auth.StdSignature{newStdSig}, stdTx.GetMemo())
 
 		var json []byte
